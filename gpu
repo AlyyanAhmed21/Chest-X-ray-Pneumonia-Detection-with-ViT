@@ -1,0 +1,57 @@
+# check_gpu.py
+
+import sys
+import torch
+
+def check_gpu_environment():
+    """
+    This script checks the system's Python and PyTorch GPU environment.
+    It prints detailed information about the setup.
+    """
+    print("--- System and Python Information ---")
+    print(f"Python Version: {sys.version}")
+    print("\n--- PyTorch and CUDA Information ---")
+    
+    try:
+        print(f"PyTorch Version: {torch.__version__}")
+        
+        # Check if CUDA (GPU support) is available
+        cuda_available = torch.cuda.is_available()
+        print(f"CUDA Available: {cuda_available}")
+        
+        if not cuda_available:
+            print("\nWARNING: PyTorch was not built with CUDA support. GPU will not be used.")
+            return
+
+        # Get the number of available GPUs
+        gpu_count = torch.cuda.device_count()
+        print(f"Number of GPUs Available: {gpu_count}")
+
+        # Get details for each GPU
+        for i in range(gpu_count):
+            print(f"\n--- GPU Details (Device {i}) ---")
+            gpu_name = torch.cuda.get_device_name(i)
+            print(f"  GPU Name: {gpu_name}")
+            
+            cuda_capability = torch.cuda.get_device_capability(i)
+            print(f"  Compute Capability: {cuda_capability[0]}.{cuda_capability[1]}")
+            
+            total_mem = torch.cuda.get_device_properties(i).total_memory / (1024**3) # Convert bytes to GB
+            print(f"  Total Memory: {total_mem:.2f} GB")
+
+        # Check for cuDNN
+        cudnn_available = torch.backends.cudnn.is_available()
+        print("\n--- cuDNN Information ---")
+        print(f"cuDNN Available: {cudnn_available}")
+        if cudnn_available:
+            cudnn_version = torch.backends.cudnn.version()
+            print(f"cuDNN Version: {cudnn_version}")
+        else:
+            print("\nWARNING: cuDNN is not available. Training will be significantly slower.")
+
+    except Exception as e:
+        print(f"\nAn error occurred: {e}")
+        print("Please ensure PyTorch is installed correctly.")
+
+if __name__ == "__main__":
+    check_gpu_environment()

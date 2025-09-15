@@ -1,0 +1,109 @@
+schema: '2.0'
+stages:
+  data_ingestion:
+    cmd: python src/vitClassifier/pipeline/stage_01_data_ingestion.py
+    deps:
+    - path: config/config.yaml
+      hash: md5
+      md5: 9a45c00c11b9a8a0b4e396952a6b19a8
+      size: 1591
+    - path: src/vitClassifier/pipeline/stage_01_data_ingestion.py
+      hash: md5
+      md5: 2486829b866dffe25a752248afa95f4f
+      size: 968
+    outs:
+    - path: artifacts/data_ingestion
+      hash: md5
+      md5: 9921508de1b9f2e8a5a4150d063e178d.dir
+      size: 2484429974
+      nfiles: 17594
+  data_transformation:
+    cmd: python src/vitClassifier/pipeline/stage_02_data_transformation.py
+    deps:
+    - path: artifacts/data_ingestion/test_df.csv
+      hash: md5
+      md5: 95cbf91a4d0719e528c74879d6da0e34
+      size: 53272
+    - path: artifacts/data_ingestion/train_df.csv
+      hash: md5
+      md5: af0d24afd4d9092b64bb1db986d38f76
+      size: 460017
+    - path: artifacts/data_ingestion/val_df.csv
+      hash: md5
+      md5: 575134cde7f8113c2a51dd4fac3e4c5e
+      size: 1389
+    - path: config/config.yaml
+      hash: md5
+      md5: 9a45c00c11b9a8a0b4e396952a6b19a8
+      size: 1591
+    - path: params.yaml
+      hash: md5
+      md5: cc525f2481819601bb93ec5d7f008dda
+      size: 127
+    - path: src/vitClassifier/pipeline/stage_02_data_transformation.py
+      hash: md5
+      md5: 095fcfa8843d6b94a05d9f2172522b32
+      size: 1237
+    outs:
+    - path: artifacts/data_transformation
+      hash: md5
+      md5: b91edf7d0a4b4b0022f2d33d3f2176fa.dir
+      size: 5074488112
+      nfiles: 18
+  model_training:
+    cmd: python src/vitClassifier/pipeline/stage_03_model_training.py
+    deps:
+    - path: artifacts/data_transformation/train_dataset
+      hash: md5
+      md5: 64425f8e57c16ac250c2ea73b78b7aa2.dir
+      size: 4687397188
+      nfiles: 12
+    - path: artifacts/data_transformation/val_dataset
+      hash: md5
+      md5: e19e673f104f2efec21df351b3d4869c.dir
+      size: 9678966
+      nfiles: 3
+    - path: config/config.yaml
+      hash: md5
+      md5: 9a45c00c11b9a8a0b4e396952a6b19a8
+      size: 1591
+    - path: params.yaml
+      hash: md5
+      md5: cc525f2481819601bb93ec5d7f008dda
+      size: 127
+    - path: src/vitClassifier/pipeline/stage_03_model_training.py
+      hash: md5
+      md5: 5e9cde1828fc4b2608e9f4e92b134a07
+      size: 815
+    outs:
+    - path: artifacts/model_training/model
+      hash: md5
+      md5: 9f0765ff59616eddac47fcaf7a5e7387.dir
+      size: 343230531
+      nfiles: 4
+  model_evaluation:
+    cmd: python src/vitClassifier/pipeline/stage_04_model_evaluation.py
+    deps:
+    - path: artifacts/data_transformation/test_dataset
+      hash: md5
+      md5: 41a8f95d5075f06bef31fbf55d838cca.dir
+      size: 377411958
+      nfiles: 3
+    - path: artifacts/model_training/model
+      hash: md5
+      md5: 9f0765ff59616eddac47fcaf7a5e7387.dir
+      size: 343230531
+      nfiles: 4
+    - path: config/config.yaml
+      hash: md5
+      md5: 9224d2383ec670f1738b47139f250ad4
+      size: 1659
+    - path: src/vitClassifier/pipeline/stage_04_model_evaluation.py
+      hash: md5
+      md5: e31c602e23dbfa62f6453ca44b621d0a
+      size: 863
+    outs:
+    - path: artifacts/model_evaluation/metrics.json
+      hash: md5
+      md5: 26b4e3326f589929e4a6e34833cc187f
+      size: 150
