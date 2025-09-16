@@ -1,4 +1,4 @@
-# .github/workflows/main.yml
+# .github/workflows/main.yml (Final Version with Git Config)
 
 name: Deploy App to Hugging Face Spaces
 
@@ -25,13 +25,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # --- THIS IS THE FIX ---
       - name: Log in to Hugging Face Hub and configure Git
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           pip install huggingface_hub
-          # Use 'hf auth login' as recommended and add the git credential flag
           huggingface-cli login --token $HF_TOKEN --add-to-git-credential
 
       - name: Push to HF Space
@@ -39,7 +37,12 @@ jobs:
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
           HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
         run: |
-          # The clone URL can be simpler now because Git is configured
+          # --- THIS IS THE FIX ---
+          # Set a dummy user identity for the git commit
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+          
+          # Now the rest of the script will work
           git clone https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
           
           rsync -av --delete --exclude='.git/' --exclude='.github/' ./ hf_space_repo/
