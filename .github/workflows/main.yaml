@@ -1,4 +1,4 @@
-# .github/workflows/main.yml
+# .github/workflows/main.yml (Final, Git LFS Version)
 
 name: Deploy App to Hugging Face Spaces
 
@@ -12,40 +12,19 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      # Step 1: Check out your repo. `lfs: true` is crucial.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          lfs: true # This automatically pulls your Git LFS files (the model)
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install DVC and project requirements
-        run: |
-          pip install "dvc[gdrive]"
-          pip install -r requirements.txt
-
-      - name: Configure DVC
-        env:
-          GDRIVE_CREDENTIALS_DATA: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
-        run: |
-          mkdir -p .dvc/tmp
-          echo "$GDRIVE_CREDENTIALS_DATA" > .dvc/tmp/gdrive-user-credentials.json
-
-      # --- THIS IS THE FIX ---
-      - name: Pull DVC Artifacts
-        # We specify the stage name directly as a target, without the -s flag
-        run: dvc pull model_training -f
-
+      # Step 2: Log in to Hugging Face Hub
       - name: Log in to Hugging Face Hub
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          pip install huggingface_hub
-          huggingface-cli login --token $HF_TOKEN
+        uses: huggingface-hub/login@v1
+        with:
+          token: ${{ secrets.HF_TOKEN }}
 
+      # Step 3: Push the complete app to the Space
       - name: Push to HF Space
         env:
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
@@ -53,9 +32,12 @@ jobs:
         run: |
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
+          # Clone the Space repo into a new directory
           git clone https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
+          # Copy all necessary files into the Space repo
           rsync -av --delete app/ app.py requirements.txt README.md artifacts/model_training/model/ hf_space_repo/
           cd hf_space_repo
           git add .
           git commit -m "Automatic deployment from GitHub Action" || echo "No changes to commit"
-          git push
+          # Force push is safer here to ensure the Space exactly matches the repo
+          git push --force 
