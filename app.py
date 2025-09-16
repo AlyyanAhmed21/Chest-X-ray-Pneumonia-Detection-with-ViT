@@ -1,129 +1,181 @@
-# app.py (in the root directory)
+# app.py (Final UI Polish Version)
 
 import gradio as gr
 from pathlib import Path
 from huggingface_hub import snapshot_download
 import asyncio
-from PIL import Image
 
-# --- Import and Initialize Backend Components from the 'app' folder ---
 from app.prediction import PredictionPipeline
 from app.database import add_patient_record, get_all_records
 
-# Initialize components once
+# --- Initialization ---
 prediction_pipeline = PredictionPipeline()
 HF_DATASET_REPO = "ALYYAN/chest-xray-pneumonia-samples"
 try:
     SAMPLE_IMAGE_DIR = Path(snapshot_download(repo_id=HF_DATASET_REPO, repo_type="dataset"))
-    # Create a list of sample image paths for the Gradio component
-    SAMPLE_IMAGES = [str(p) for p in list(SAMPLE_IMAGE_DIR.glob('*/*.jpeg'))[:10]]
+    SAMPLE_IMAGES = [str(p) for p in list(SAMPLE_IMAGE_DIR.glob('*/*.jpeg'))]
 except Exception as e:
     print(f"Could not download sample images: {e}")
     SAMPLE_IMAGES = []
 
-# --- Core Prediction Logic for Gradio ---
-async def classify_images(patient_name, patient_age, image_list):
-    # 1. Input Validation
-    if not patient_name or patient_age is None:
+# --- Core Logic (Async Functions) ---
+async def process_analysis(patient_name, patient_age, image_list, is_sample=False):
+    if not is_sample and (not patient_name or patient_age is None or str(patient_age).strip() == ""):
         raise gr.Error("Patient Name and Age are required.")
     if not image_list:
-        raise gr.Error("Please upload at least one image.")
+        raise gr.Error("At least one image is required.")
     
-    # Gradio provides file paths for uploaded files in a temp directory
-    # Our prediction pipeline can handle these paths directly.
+    result = prediction_pipeline.predict(image_list)
+    if "error" in result:
+        raise gr.Error(result["error"])
 
-    # 2. Run Prediction
-    result = prediction_pipeline.predict(image_list) # Pass the list of temp file paths
-    prediction = result.get("prediction", "Error")
-    confidence = result.get("confidence", 0)
-
-    if prediction == "Error":
-        raise gr.Error(result.get("details", "An unknown error occurred during prediction."))
-
-    # 3. Save to Database
-    # Ensure age is an integer
-    try:
-        age = int(patient_age)
-    except (ValueError, TypeError):
-        raise gr.Error("Patient Age must be a valid number.")
-
-    await add_patient_record(
-        name=str(patient_name),
-        age=age,
-        result=prediction,
-        confidence=confidence
-    )
-
-    # 4. Format the Output for Gradio
-    confidences = {"NORMAL": 0.0, "PNEUMONIA": 0.0} # Initialize both labels
-    confidences[prediction] = confidence
+    final_pred = result["final_prediction"]
+    final_conf = result["final_confidence"]
     
-    return confidences
+    if not is_sample:
+        await add_patient_record(str(patient_name), int(patient_age), final_pred, final_conf)
 
-# --- Function to fetch and format database records ---
-async def get_records_html():
+    confidences = {"NORMAL": 0.0, "PNEUMONIA": 0.0}
+    confidences[final_pred] = final_conf
+    confidences["NORMAL" if final_pred == "PNEUMONIA" else "PNEUMONIA"] = 1 - final_conf
+    
+    return [
+        gr.update(visible=False), # uploader_column
+        gr.update(visible=True),  # results_column
+        gr.update(value=result["watermarked_images"]), # result_images
+        gr.update(value=confidences) # result_label
+    ]
+
+async def refresh_history_table():
     records = await get_all_records()
-    if not records:
-        return "<p>No records found in the database.</p>"
+    data_for_df = []
+    if records:
+        data_for_df = [[r.get('name'), r.get('age'), r.get('prediction_result'), f"{r.get('confidence_score', 0):.2%}", r.get('timestamp').strftime('%Y-%m-%d %H:%M')] for r in records]
+    return gr.update(value=data_for_df)
+
+# --- Gradio UI Definition ---
+css = """
+/* --- Professional Dark Theme & Fonts --- */
+:root { --primary-hue: 220 !important; --secondary-hue: 210 !important; --neutral-hue: 210 !important; --body-background-fill: #111827 !important; --block-background-fill: #1F2937 !important; --block-border-width: 1px !important; --border-color-accent: #374151 !important; --background-fill-secondary: #1F2937 !important;}
+/* --- Header & Title Styling --- */
+#app_header { text-align: center; }
+#app_title { font-size: 2.8rem !important; font-weight: 700 !important; color: #FFFFFF !important; padding-top: 1rem; }
+#app_subtitle { font-size: 1.2rem !important; color: #9CA3AF !important; margin-bottom: 2rem; }
+/* --- Layout, Spacing, and Component Styling --- */
+#main_container { gap: 2rem; }
+#results_gallery { height: 350px !important; }
+#results_gallery .gallery-item { height: 330px !important; max-height: 330px !important; padding: 0.25rem !important; background-color: #374151; border: 1px solid #374151 !important; }
+#results_gallery .gallery-item img { object-fit: contain !important; }
+#bottom_controls { max-width: 600px; margin: 2.5rem auto 1rem auto; }
+#bottom_controls .gr-accordion > .gr-block-label { text-align: center !important; display: block !important; }
+"""
+with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue"), css=css, title="Pneumonia Detection AI") as demo:
     
-    # Create an HTML table from the records
-    html = "<table><tr><th>Name</th><th>Age</th><th>Prediction</th><th>Confidence</th><th>Date</th></tr>"
-    for r in records:
-        confidence_percent = f"{r['confidence_score']:.2%}" if r['confidence_score'] is not None else "N/A"
-        timestamp = r['timestamp'].strftime('%Y-%m-%d %H:%M') if r['timestamp'] else "N/A"
-        html += f"<tr><td>{r.get('name', 'N/A')}</td><td>{r.get('age', 'N/A')}</td><td>{r.get('prediction_result', 'N/A')}</td><td>{confidence_percent}</td><td>{timestamp}</td></tr>"
-    html += "</table>"
-    return html
+    with gr.Column() as main_app:
+        with gr.Column(elem_id="app_header"):
+            gr.Markdown("# 🩺 Pneumonia Detection AI", elem_id="app_title")
+            gr.Markdown("An AI-powered tool to assist in the diagnosis of pneumonia.", elem_id="app_subtitle")
+        with gr.Row(elem_id="main_container"):
+            with gr.Column(scale=1) as uploader_column:
+                gr.Markdown("### Upload Patient X-Rays")
+                image_input = gr.File(label="Upload up to 3 Images", file_count="multiple", file_types=["image"], type="filepath")
+            with gr.Column(scale=2, visible=False) as results_column:
+                gr.Markdown("### Analysis Results")
+                result_images = gr.Gallery(label="Analyzed Images", columns=3, object_fit="contain", height=350, elem_id="results_gallery")
+                result_label = gr.Label(label="Overall Prediction", num_top_classes=2)
+                start_over_btn = gr.Button("Start New Analysis", variant="secondary")
+        with gr.Group(visible=False) as patient_info_modal:
+            gr.Markdown("## Enter Patient Details", elem_classes="text-center")
+            patient_name_modal = gr.Textbox(label="Patient Name", placeholder="e.g., John Doe")
+            patient_age_modal = gr.Number(label="Patient Age", minimum=0, maximum=120, step=1)
+            with gr.Row():
+                submit_analysis_btn = gr.Button("Analyze Images", variant="primary")
+                cancel_btn = gr.Button("Cancel", variant="stop")
+        with gr.Column(elem_id="bottom_controls"):
+            with gr.Accordion("About this Tool", open=False):
+                gr.Markdown(
+                    """
+                    ### MLOps-Powered Pneumonia Detection
 
-# --- Build the Gradio Interface ---
-with gr.Blocks(theme=gr.themes.Soft(), css="table { width: 100%; border-collapse: collapse; } th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }") as demo:
-    gr.Markdown("# 🩺 Pneumonia Detection AI")
-    gr.Markdown("Upload one or more chest X-ray images for a patient to classify them as **Normal** or **Pneumonia**.")
+                    This application demonstrates a complete, end-to-end MLOps pipeline for medical image classification. It leverages a state-of-the-art **Vision Transformer (ViT)** model, fine-tuned on a public dataset of chest X-ray images to distinguish between Normal and Pneumonia cases.
 
-    with gr.Row():
-        with gr.Column(scale=1):
-            gr.Markdown("### 1. Patient Information")
-            patient_name = gr.Textbox(label="Patient Name", placeholder="e.g., John Doe")
-            patient_age = gr.Number(label="Patient Age", minimum=0, maximum=120, step=1)
+                    ---
 
-            gr.Markdown("### 2. Upload Images")
-            # Using type="filepath" is simpler and avoids memory issues with large images
-            image_input = gr.File(
-                label="Upload up to 3 X-Rays",
-                file_count="multiple",
-                file_types=["image"],
-                type="filepath" # Gradio will save uploads to a temp dir and give us the path
-            )
-            
-            submit_btn = gr.Button("Analyze Images", variant="primary")
+                    **Key Features & Technologies:**
 
-            if SAMPLE_IMAGES:
-                gr.Examples(
-                    examples=SAMPLE_IMAGES,
-                    inputs=image_input,
-                    label="Sample Images (Click one, then click Analyze)",
-                    examples_per_page=5
+                    *   **Model:** Google's `vit-base-patch16-224-in21k`, fine-tuned for high accuracy.
+                    *   **MLOps Pipeline:** Reproducible workflow managed by **DVC** for data versioning and **MLflow** for experiment tracking.
+                    *   **Database:** Patient and prediction data is stored and managed in a **MongoDB** database for scalability.
+                    *   **Frontend:** A responsive and interactive user interface built with **Gradio**.
+                    *   **Deployment Ready:** The entire project is containerized and ready for deployment on platforms like Hugging Face Spaces.
+
+                    **Disclaimer:** This tool is for demonstration and educational purposes only and is **not a substitute for professional medical advice.**
+
+                    ---
+
+                    **Project Team:**
+
+                    *   **Alyyan Ahmed** - (roles)
+                    *   **Munim Akbar** - (roles)
+                    """
                 )
-
-        with gr.Column(scale=1):
-            gr.Markdown("### 3. Analysis Results")
-            output_label = gr.Label(label="Prediction", num_top_classes=2)
-            gr.Markdown("---")
-            with gr.Accordion("View Patient Record History", open=False):
-                records_html = gr.HTML("Loading records...")
-                demo.load(get_records_html, None, records_html) # Load records when the app starts
-                refresh_btn = gr.Button("Refresh History")
-
-
-    # --- Link Components to the Function ---
-    submit_btn.click(
-        fn=classify_images,
-        inputs=[patient_name, patient_age, image_input],
-        outputs=[output_label]
-    )
+            with gr.Row():
+                samples_btn = gr.Button("Try Sample Images")
+                history_btn = gr.Button("View Patient History")
+    with gr.Column(visible=False) as history_page:
+        gr.Markdown("# 📜 Patient Record History", elem_classes="app_title")
+        with gr.Row():
+            back_to_main_btn_hist = gr.Button("⬅️ Back to Main App")
+            refresh_history_btn = gr.Button("Refresh History")
+        history_df = gr.DataFrame(headers=["Name", "Age", "Prediction", "Confidence", "Date"], row_count=10, interactive=False)
+    with gr.Column(visible=False) as samples_page:
+        gr.Markdown("# 🖼️ Sample Image Library", elem_classes="app_title")
+        gr.Markdown("Click an image to run an anonymous analysis.")
+        back_to_main_btn_samp = gr.Button("⬅️ Back to Main App")
+        sample_gallery = gr.Gallery(value=SAMPLE_IMAGES, label="Sample Images", columns=5, height=400)
     
-    # When the refresh button is clicked, re-run the get_records_html function
-    refresh_btn.click(fn=get_records_html, inputs=None, outputs=records_html)
+    # --- Event Handling Logic ---
+    def show_patient_info(files):
+        return gr.update(visible=True) if files else gr.update(visible=False)
+    image_input.upload(fn=show_patient_info, inputs=image_input, outputs=patient_info_modal)
+    
+    async def submit_and_hide_modal(name, age, files):
+        analysis_results = await process_analysis(name, age, files)
+        return [
+            *analysis_results,
+            gr.update(visible=False) # Hide the modal
+        ]
+    submit_analysis_btn.click(fn=submit_and_hide_modal, inputs=[patient_name_modal, patient_age_modal, image_input], outputs=[uploader_column, results_column, result_images, result_label, patient_info_modal])
+    
+    cancel_btn.click(lambda: (gr.update(visible=False), None), None, [patient_info_modal, image_input])
+    start_over_btn.click(fn=None, js="() => { window.location.reload(); }")
+    
+    async def handle_sample_click(evt: gr.SelectData):
+        selected_path = evt.value
+        analysis_results = await process_analysis("Sample User", 0, [selected_path], is_sample=True)
+        return [
+            gr.update(visible=True),   # main_app
+            gr.update(visible=False),  # samples_page
+            *analysis_results          
+        ]
+    sample_gallery.select(handle_sample_click, None, [main_app, samples_page, uploader_column, results_column, result_images, result_label])
+    
+    all_pages = [main_app, history_page, samples_page]
+    async def show_history_page_and_refresh():
+        records_update = await refresh_history_table()
+        return [gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), records_update]
+    def show_samples_page():
+        return [gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)]
+    def show_main_page():
+        return [gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)]
+    
+    history_btn.click(fn=show_history_page_and_refresh, outputs=all_pages + [history_df])
+    samples_btn.click(fn=show_samples_page, outputs=all_pages)
+    back_to_main_btn_hist.click(fn=show_main_page, outputs=all_pages)
+    back_to_main_btn_samp.click(fn=show_main_page, outputs=all_pages)
+    
+    refresh_history_btn.click(fn=refresh_history_table, outputs=history_df)
+    demo.load(fn=refresh_history_table, outputs=history_df)
 
 # --- Launch the App ---
 if __name__ == "__main__":

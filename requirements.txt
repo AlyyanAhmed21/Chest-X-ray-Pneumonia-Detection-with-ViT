@@ -1,27 +1,16 @@
-pandas
-numpy
-torch
-torchvision
+gradio==4.19.1
+pymongo
+motor
+python-dotenv
+huggingface_hub
+torch --index-url https://download.pytorch.org/whl/cpu
+torchvision --index-url https://download.pytorch.org/whl/cpu
+Pillow
 transformers
-datasets>=2.14.5
-evaluate
-accelerate>=0.27
-mlflow
+datasets
 scikit-learn
 imblearn
 python-box
 PyYAML
 ensure
-tqdm
-pathlib
-dvc
-matplotlib
-Pillow
-kaggle
-python-dotenv
-nicegui
-sqlalchemy
-pymongo
-motor
-huggingface_hub
-gradio
+dvc[gdrive] # Add dvc with gdrive support
