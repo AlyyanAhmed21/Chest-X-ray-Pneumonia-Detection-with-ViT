@@ -42,7 +42,7 @@ jobs:
 
       # Step 6: Log in to Hugging Face Hub
       - name: Log in to Hugging Face Hub
-        uses: huggingface/login@v1
+        uses: huggingface-hub/login@v1
         with:
           token: ${{ secrets.HF_TOKEN }}
 
