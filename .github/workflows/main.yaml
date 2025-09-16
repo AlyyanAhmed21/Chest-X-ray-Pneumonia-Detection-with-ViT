@@ -36,7 +36,8 @@ jobs:
 
       # --- THIS IS THE FIX ---
       - name: Pull DVC Artifacts
-        run: dvc pull -s model_training -f
+        # We specify the stage name directly as a target, without the -s flag
+        run: dvc pull model_training -f
 
       - name: Log in to Hugging Face Hub
         env:
@@ -53,13 +54,6 @@ jobs:
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
           git clone https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
-          
-          # We need to copy the dvc.yaml and dvc.lock files for the pull to work in the previous step
-          # This is incorrect. The pull happens before the clone. Let's fix the logic.
-          # The checkout action already brings dvc.yaml and dvc.lock
-
-          # The directory structure will be correct after the dvc pull.
-          # We just need to copy the final app and the pulled model.
           rsync -av --delete app/ app.py requirements.txt README.md artifacts/model_training/model/ hf_space_repo/
           cd hf_space_repo
           git add .
