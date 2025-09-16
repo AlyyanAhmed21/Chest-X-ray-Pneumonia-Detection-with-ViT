@@ -6,8 +6,10 @@ colorTo: indigo
 sdk: gradio
 sdk_version: 4.19.1
 app_file: app.py
-startup_script: setup.sh
 pinned: false
+secrets:
+  - MONGODB_CONNECTION_STRING
+  # HF_TOKEN is no longer needed here, it's a secret for the runner
 ---
 
 # 🩺 Pneumonia Detection AI
