@@ -5,30 +5,28 @@ name: Deploy App to Hugging Face Spaces
 on:
   push:
     branches:
-      - main  # Trigger this workflow on every push to the main branch
+      - main
 
 jobs:
   deploy-to-hub:
     runs-on: ubuntu-latest
     
     steps:
-      # Step 1: Check out your source code from GitHub
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches all history for Git LFS
+          fetch-depth: 0
 
-      # Step 2: Set up Python environment
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # Match the Python version you used
+          python-version: '3.11'
 
-      # Step 3: Install DVC and its Google Drive dependency
-      - name: Install DVC
-        run: pip install "dvc[gdrive]"
+      - name: Install DVC and project requirements
+        run: |
+          pip install "dvc[gdrive]"
+          pip install -r requirements.txt # requirements.txt should also have huggingface_hub
 
-      # Step 4: Configure DVC with the credentials from GitHub Secrets
       - name: Configure DVC
         env:
           GDRIVE_CREDENTIALS_DATA: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
@@ -36,29 +34,29 @@ jobs:
           mkdir -p .dvc/tmp
           echo "$GDRIVE_CREDENTIALS_DATA" > .dvc/tmp/gdrive-user-credentials.json
 
-      # Step 5: Pull the large model file from Google Drive
       - name: Pull DVC Artifacts
         run: dvc pull artifacts/model_training/model.dvc -f
 
-      # Step 6: Log in to Hugging Face Hub
+      # --- THIS IS THE FIX ---
       - name: Log in to Hugging Face Hub
-        uses: huggingface-hub/login@v1
-        with:
-          token: ${{ secrets.HF_TOKEN }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # huggingface_hub is already installed via requirements.txt, but this is a safe fallback
+          pip install huggingface_hub
+          huggingface-cli login --token $HF_TOKEN
 
-      # Step 7: Push the complete app (code + model) to the Space
       - name: Push to HF Space
         env:
-          HF_SPACE_TARGET: ${{ secrets.HF_USERNAME }}/${{ secrets.HF_SPACE_NAME }} # Example: ALYYAN/pneumonia-detection-ai
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+          HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
         run: |
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
-          # Clone the Space repo into a new directory
-          git clone https://huggingface.co/spaces/${HF_SPACE_TARGET} hf_space_repo
-          # Copy all necessary files into the Space repo
-          cp -r app/ app.py requirements.txt README.md artifacts/model_training/model/ hf_space_repo/
+          git clone https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
+          # Use rsync for a more robust copy
+          rsync -av --delete app/ app.py requirements.txt README.md artifacts/model_training/model/ hf_space_repo/
           cd hf_space_repo
-          # Commit and push
           git add .
           git commit -m "Automatic deployment from GitHub Action" || echo "No changes to commit"
           git push
