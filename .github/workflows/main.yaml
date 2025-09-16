@@ -1,4 +1,4 @@
-# .github/workflows/main.yml (Final, Git LFS Version)
+# .github/workflows/main.yml (Final, Most Robust Version)
 
 name: Deploy App to Hugging Face Spaces
 
@@ -12,19 +12,30 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      # Step 1: Check out your repo. `lfs: true` is crucial.
+      # Step 1: Check out your repo, including LFS files
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          lfs: true # This automatically pulls your Git LFS files (the model)
+          lfs: true
 
-      # Step 2: Log in to Hugging Face Hub
-      - name: Log in to Hugging Face Hub
-        uses: huggingface-hub/login@v1
+      # Step 2: Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          token: ${{ secrets.HF_TOKEN }}
+          python-version: '3.11'
+      
+      # Step 3: Install requirements (huggingface_hub is in requirements.txt)
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      # Step 3: Push the complete app to the Space
+      # Step 4: Log in to Hugging Face Hub using the CLI
+      # THIS IS THE FIX. It is more reliable than the 'uses:' action.
+      - name: Log in to Hugging Face Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: huggingface-cli login --token $HF_TOKEN
+
+      # Step 5: Push the complete app to the Space
       - name: Push to HF Space
         env:
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
@@ -32,12 +43,14 @@ jobs:
         run: |
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
-          # Clone the Space repo into a new directory
-          git clone https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
-          # Copy all necessary files into the Space repo
-          rsync -av --delete app/ app.py requirements.txt README.md artifacts/model_training/model/ hf_space_repo/
+          
+          # Use the HF_TOKEN for authentication with the Space repo
+          git clone https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
+          
+          # Use rsync to sync files efficiently
+          rsync -av --delete --exclude='.git/' ./ hf_space_repo/
+          
           cd hf_space_repo
           git add .
           git commit -m "Automatic deployment from GitHub Action" || echo "No changes to commit"
-          # Force push is safer here to ensure the Space exactly matches the repo
-          git push --force 
+          git push
