@@ -19,3 +19,9 @@ matplotlib
 Pillow
 kaggle
 python-dotenv
+nicegui
+sqlalchemy
+pymongo
+motor
+huggingface_hub
+gradio
