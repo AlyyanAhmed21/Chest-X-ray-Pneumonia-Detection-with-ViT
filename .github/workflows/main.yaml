@@ -1,4 +1,4 @@
-# .github/workflows/main.yml
+# .github/workflows/main.yml (Final Version Combining Your Auth and the LFS Fix)
 
 name: Deploy App to Hugging Face Spaces
 
@@ -12,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
+      - name: Checkout repository from GitHub
         uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: true # Ensures the large model file is downloaded here
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,14 +36,32 @@ jobs:
           git config --global user.name "GitHub Actions"
 
           # Clone the Hugging Face Space using token auth
+          echo "Cloning target HF Space..."
           git clone https://user:$HF_TOKEN@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
 
-          # Sync files, excluding .git and workflows
+          # Sync application files into the cloned repo
+          echo "Syncing files..."
           rsync -av app/ app.py requirements.txt README.md artifacts/model_training/model/ hf_space_repo/
 
+          # Navigate into the cloned repo
           cd hf_space_repo
+
+          # --- THIS IS THE CRUCIAL MISSING STEP ---
+          echo "Configuring Git LFS for push..."
+          # 1. Install LFS (it's pre-installed on runners, but `install` activates it)
+          git lfs install
+          # 2. Tell LFS to track the large file types in this repo
+          git lfs track "*.safetensors"
+          git lfs track "*.pt"
+          git lfs track "*.bin"
+          # 3. Ensure the .gitattributes file is staged
+          git add .gitattributes
+          
+          echo "Committing changes..."
+          # Now, add all the synced files
           git add .
           git commit -m "Automatic deployment from GitHub Action" || echo "No changes to commit"
 
-          # Push using token auth
+          # Push using token auth. LFS will now intercept the large files.
+          echo "Pushing to HF Space..."
           git push https://user:$HF_TOKEN@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}.git
