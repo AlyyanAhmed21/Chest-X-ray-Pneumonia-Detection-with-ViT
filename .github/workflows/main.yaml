@@ -1,4 +1,4 @@
-# .github/workflows/main.yml (Final Version with Git Config)
+# .github/workflows/main.yml
 
 name: Deploy App to Hugging Face Spaces
 
@@ -25,29 +25,25 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Log in to Hugging Face Hub and configure Git
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          pip install huggingface_hub
-          huggingface-cli login --token $HF_TOKEN --add-to-git-credential
-
       - name: Push to HF Space
         env:
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
           HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # --- THIS IS THE FIX ---
-          # Set a dummy user identity for the git commit
+          # Configure git identity
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "GitHub Actions"
-          
-          # Now the rest of the script will work
-          git clone https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
-          
+
+          # Clone the Hugging Face Space using token auth
+          git clone https://user:$HF_TOKEN@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
+
+          # Sync files, excluding .git and workflows
           rsync -av --delete --exclude='.git/' --exclude='.github/' ./ hf_space_repo/
-          
+
           cd hf_space_repo
           git add .
           git commit -m "Automatic deployment from GitHub Action" || echo "No changes to commit"
-          git push
+
+          # Push using token auth
+          git push https://user:$HF_TOKEN@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}.git
