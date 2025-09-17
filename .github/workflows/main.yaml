@@ -39,7 +39,7 @@ jobs:
           git clone https://user:$HF_TOKEN@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
 
           # Sync files, excluding .git and workflows
-          rsync -av --delete --exclude='.git/' --exclude='.github/' ./ hf_space_repo/
+          rsync -av app/ app.py requirements.txt README.md artifacts/model_training/model/ hf_space_repo/
 
           cd hf_space_repo
           git add .
