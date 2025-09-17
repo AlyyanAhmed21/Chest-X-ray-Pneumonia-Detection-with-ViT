@@ -1,29 +1,23 @@
-# app.py (The Definitive Final Version)
+# app.py (The Final Polished Version)
 
 import gradio as gr
 from pathlib import Path
 import asyncio
-from PIL import Image
 
-# Import backend components from the 'app' folder
+# Import backend components
 from app.prediction import PredictionPipeline
 from app.database import add_patient_record, get_all_records
 
 # --- Initialization ---
 prediction_pipeline = PredictionPipeline()
-# Point to the locally cloned sample images directory from setup.sh
 SAMPLE_IMAGE_DIR = Path("sample_images")
 try:
     if SAMPLE_IMAGE_DIR.is_dir():
-        # Separate the lists of images for the two-column layout
         NORMAL_SAMPLES = [str(p) for p in sorted(list((SAMPLE_IMAGE_DIR / 'NORMAL').glob('*.jpeg')))]
         PNEUMONIA_SAMPLES = [str(p) for p in sorted(list((SAMPLE_IMAGE_DIR / 'PNEUMONIA').glob('*.jpeg')))]
-    else:
-        raise FileNotFoundError
+    else: raise FileNotFoundError
 except FileNotFoundError:
-    print("Warning: 'sample_images' directory not found or is empty. Please check setup.sh. Samples will be unavailable.")
-    NORMAL_SAMPLES, PNEUMONIA_SAMPLES = [], []
-
+    print("Warning: 'sample_images' directory not found."); NORMAL_SAMPLES, PNEUMONIA_SAMPLES = [], []
 
 # --- Core Logic (Async Functions) ---
 async def process_analysis(patient_name, patient_age, image_list):
@@ -71,12 +65,12 @@ async def refresh_history_table():
 css = """
 /* --- Professional Dark Theme & Fonts --- */
 :root { --primary-hue: 220 !important; --secondary-hue: 210 !important; --neutral-hue: 210 !important; --body-background-fill: #111827 !important; --block-background-fill: #1F2337 !important; --block-border-width: 1px !important; --border-color-accent: #374151 !important; --background-fill-secondary: #1F2937 !important;}
-/* --- Header & Title Styling --- */
-#app_header { text-align: center; max-width: 900px; margin: 0 auto; }
-#app_title { font-size: 3rem !important; font-weight: 800 !important; color: #FFFFFF !important; padding-top: 1rem; }
+/* --- Header & Title Styling (THE FIX) --- */
+#app_header { text-align: center; max-width: 1000px; margin: 0 auto; }
+#app_title { font-size: 3.2rem !important; font-weight: 800 !important; color: #FFFFFF !important; padding-top: 1rem; }
 #app_subtitle { font-size: 1.25rem !important; color: #9CA3AF !important; margin-bottom: 2rem; }
 /* --- Layout and Spacing --- */
-#main_container { gap: 2rem; max-width: 700px; margin: 0 auto; }
+#main_container { gap: 2rem; max-width: 800px; margin: 0 auto; }
 #results_gallery .gallery-item { padding: 0.25rem !important; background-color: #374151; border: 1px solid #374151 !important; }
 #bottom_controls { max-width: 500px; margin: 2.5rem auto 1rem auto; }
 """
@@ -114,14 +108,12 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
                     This application demonstrates a complete, end-to-end MLOps pipeline for medical image classification. It leverages a state-of-the-art **Vision Transformer (ViT)** model, fine-tuned on a public dataset of chest X-ray images to distinguish between Normal and Pneumonia cases.
                     
                     **Disclaimer:** This tool is for demonstration and educational purposes only and is **not a substitute for professional medical advice.**
-
                     ---
-
                     **Project Team:**
                     *   **Alyyan Ahmed** - ML Engineer & Developer
                     *   **Munim Akbar** - ML Engineer & Developer
                     """
-                )
+                ) # Professional description here
             with gr.Row():
                 samples_btn = gr.Button("Try Sample Images")
                 history_btn = gr.Button("View Patient History")
@@ -133,48 +125,50 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
             refresh_history_btn = gr.Button("Refresh History")
         history_df = gr.DataFrame(headers=["Name", "Age", "Prediction", "Confidence", "Date"], row_count=10, interactive=False)
 
+    # --- SAMPLES PAGE (DEFINITIVE REDESIGN) ---
     with gr.Column(visible=False) as samples_page:
         gr.Markdown("# 🖼️ Sample Image Library", elem_classes="app_title")
-        gr.Markdown("You can download these sample images to test the tool on the main page.")
+        gr.Markdown("You can right-click and 'Save Image As...' to download these samples for testing on the main page.")
         back_to_main_btn_samp = gr.Button("⬅️ Back to Main App")
         
         with gr.Row():
             with gr.Column():
                 gr.Markdown("### Normal Cases")
-                for img_path in NORMAL_SAMPLES:
-                    gr.File(value=img_path, label=Path(img_path).name, interactive=False)
+                # Use a Gallery to display the images visually
+                gr.Gallery(
+                    value=NORMAL_SAMPLES,
+                    label="Normal X-Rays",
+                    columns=5,
+                    object_fit="cover", # 'cover' often looks better for galleries
+                    height="auto"
+                )
             
             with gr.Column():
                 gr.Markdown("### Pneumonia Cases")
-                for img_path in PNEUMONIA_SAMPLES:
-                    gr.File(value=img_path, label=Path(img_path).name, interactive=False)
+                # Use a Gallery for the pneumonia samples as well
+                gr.Gallery(
+                    value=PNEUMONIA_SAMPLES,
+                    label="Pneumonia X-Rays",
+                    columns=5,
+                    object_fit="cover",
+                    height="auto"
+                )
     
-    # --- Event Handling Logic ---
-    
-    def show_patient_info(files):
-        return gr.update(visible=True) if files else gr.update(visible=False)
+    # --- Event Handling Logic (Unchanged and Correct) ---
+    def show_patient_info(files): return gr.update(visible=True) if files else gr.update(visible=False)
     image_input.upload(fn=show_patient_info, inputs=image_input, outputs=patient_info_modal)
-
     async def submit_and_hide_modal(name, age, files):
-        analysis_results = await process_analysis(name, age, files)
-        return [*analysis_results, gr.update(visible=False)]
+        analysis_results = await process_analysis(name, age, files); return [*analysis_results, gr.update(visible=False)]
     submit_analysis_btn.click(fn=submit_and_hide_modal, inputs=[patient_name_modal, patient_age_modal, image_input], outputs=[uploader_column, results_column, result_images, result_label, patient_info_modal])
-    
     cancel_btn.click(lambda: (gr.update(visible=False), None), None, [patient_info_modal, image_input])
     start_over_btn.click(fn=None, js="() => { window.location.reload(); }")
     
     all_pages = [main_app, history_page, samples_page]
-    
     async def show_history_page_and_refresh():
-        records_update = await refresh_history_table()
-        return [gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), records_update]
+        records_update = await refresh_history_table(); return [gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), records_update]
+    def show_samples_page(): return [gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)]
+    def show_main_page(): return [gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)]
     
-    def show_samples_page():
-        return [gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)]
-    
-    def show_main_page():
-        return [gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)]
-
     history_btn.click(fn=show_history_page_and_refresh, outputs=all_pages + [history_df])
     samples_btn.click(fn=show_samples_page, outputs=all_pages)
     back_to_main_btn_hist.click(fn=show_main_page, outputs=all_pages)
