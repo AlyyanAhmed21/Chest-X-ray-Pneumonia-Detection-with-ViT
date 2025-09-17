@@ -1,9 +1,6 @@
-# app.py (Definitive Final Version with Syntax Fix)
-
 import gradio as gr
 from pathlib import Path
 import asyncio
-from PIL import Image
 
 # Import backend components
 from app.prediction import PredictionPipeline
@@ -14,45 +11,26 @@ prediction_pipeline = PredictionPipeline()
 SAMPLE_IMAGE_DIR = Path("sample_images")
 try:
     if SAMPLE_IMAGE_DIR.is_dir():
-        SAMPLE_IMAGES = [str(p) for p in sorted(list(SAMPLE_IMAGE_DIR.glob('*/*.jpeg')))]
+        NORMAL_SAMPLES = [str(p) for p in sorted(list((SAMPLE_IMAGE_DIR / 'NORMAL').glob('*.jpeg')))]
+        PNEUMONIA_SAMPLES = [str(p) for p in sorted(list((SAMPLE_IMAGE_DIR / 'PNEUMONIA').glob('*.jpeg')))]
     else: raise FileNotFoundError
 except FileNotFoundError:
-    print("Warning: 'sample_images' directory not found."); SAMPLE_IMAGES = []
+    print("Warning: 'sample_images' directory not found."); NORMAL_SAMPLES, PNEUMONIA_SAMPLES = [], []
 
 # --- Core Logic Functions (Unchanged) ---
-async def process_analysis(patient_name, patient_age, image_list, is_sample=False):
-    if not is_sample and (not patient_name or patient_age is None):
-        raise gr.Error("Patient Name and Age are required.")
-    if not image_list:
-        raise gr.Error("At least one image is required.")
-    
+async def process_analysis(patient_name, patient_age, image_list):
+    if not patient_name or patient_age is None: raise gr.Error("Patient Name and Age are required.")
+    if not image_list: raise gr.Error("At least one image is required.")
     result = prediction_pipeline.predict(image_list)
-    if "error" in result:
-        raise gr.Error(result.get("details", result["error"]))
-
-    final_pred = result["final_prediction"]
-    final_conf = result["final_confidence"]
-    
-    if not is_sample:
-        await add_patient_record(str(patient_name), int(patient_age), final_pred, final_conf)
-
-    confidences = {"NORMAL": 0.0, "PNEUMONIA": 0.0}
-    confidences[final_pred] = final_conf
-    confidences["NORMAL" if final_pred == "PNEUMONIA" else "PNEUMONIA"] = 1 - final_conf
-    
-    return [
-        gr.update(visible=False),
-        gr.update(visible=True),
-        gr.update(value=result["watermarked_images"]),
-        gr.update(value=confidences)
-    ]
-
+    if "error" in result: raise gr.Error(result.get("details", result["error"]))
+    final_pred, final_conf = result["final_prediction"], result["final_confidence"]
+    await add_patient_record(str(patient_name), int(patient_age), final_pred, final_conf)
+    confidences = {"NORMAL": 0.0, "PNEUMONIA": 0.0}; confidences[final_pred] = final_conf; confidences["NORMAL" if final_pred == "PNEUMONIA" else "PNEUMONIA"] = 1 - final_conf
+    return [gr.update(visible=False), gr.update(visible=True), gr.update(value=result["watermarked_images"]), gr.update(value=confidences)]
 async def refresh_history_table():
     records = await get_all_records()
-    data_for_df = []
-    if records:
-        data_for_df = [[r.get('name'), r.get('age'), r.get('prediction_result'), f"{r.get('confidence_score', 0):.2%}", r.get('timestamp').strftime('%Y-%m-%d %H:%M')] for r in records]
-    return gr.update(value=data_for_df)
+    data = [[r.get('name'), r.get('age'), r.get('prediction_result'), f"{r.get('confidence_score', 0):.2%}", r.get('timestamp').strftime('%Y-%m-%d %H:%M')] for r in records] if records else []
+    return gr.update(value=data)
 
 # --- Gradio UI Definition ---
 css = """
@@ -66,10 +44,10 @@ css = """
 #main_container { gap: 2rem; max-width: 900px; margin: 0 auto; }
 #results_gallery .gallery-item { padding: 0.25rem !important; background-color: #374151; border: 1px solid #374151 !important; }
 #bottom_controls { max-width: 500px; margin: 2.5rem auto 1rem auto; }
+#bottom_controls .gr-accordion > .gr-block-label { text-align: center !important; display: block !important; }
 """
 with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue"), css=css, title="Pneumonia Detection AI") as demo:
     
-    # --- UI Layout (Unchanged) ---
     with gr.Column() as main_app:
         with gr.Column(elem_id="app_header"):
             gr.Markdown("# 🩺 Pneumonia Detection AI", elem_id="app_title")
@@ -90,9 +68,24 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
             with gr.Row():
                 submit_analysis_btn = gr.Button("Analyze Images", variant="primary")
                 cancel_btn = gr.Button("Cancel", variant="stop")
+        
+        # --- "About" Section (RESTORED) ---
         with gr.Column(elem_id="bottom_controls"):
             with gr.Accordion("About this Tool", open=False):
-                gr.Markdown("...") # Professional description here
+                gr.Markdown(
+                    """
+                    ### MLOps-Powered Pneumonia Detection
+                    This application demonstrates a complete, end-to-end MLOps pipeline for medical image classification. It leverages a state-of-the-art **Vision Transformer (ViT)** model, fine-tuned on a public dataset of chest X-ray images to distinguish between Normal and Pneumonia cases.
+                    
+                    **Disclaimer:** This tool is for demonstration and educational purposes only and is **not a substitute for professional medical advice.**
+
+                    ---
+
+                    **Project Team:**
+                    *   **Alyyan Ahmed** - ML Engineer & Developer
+                    *   **Munim Akbar** - ML Engineer & Developer
+                    """
+                )
             with gr.Row():
                 samples_btn = gr.Button("Try Sample Images")
                 history_btn = gr.Button("View Patient History")
@@ -106,14 +99,21 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
 
     with gr.Column(visible=False) as samples_page:
         gr.Markdown("# 🖼️ Sample Image Library", elem_classes="app_title")
-        gr.Markdown("Click an image to run an anonymous analysis.")
-        sample_gallery = gr.Gallery(value=SAMPLE_IMAGES, label="Sample Images", columns=5, height=400, allow_preview=True, elem_id="sample_gallery")
-        hidden_sample_analyze_btn = gr.Button("Analyze Sample", visible=False)
+        gr.Markdown("You can download these sample images to test the tool on the main page.")
         back_to_main_btn_samp = gr.Button("⬅️ Back to Main App")
+        
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("### Normal Cases")
+                for img_path in NORMAL_SAMPLES:
+                    gr.File(value=img_path, label=Path(img_path).name, interactive=False)
+            
+            with gr.Column():
+                gr.Markdown("### Pneumonia Cases")
+                for img_path in PNEUMONIA_SAMPLES:
+                    gr.File(value=img_path, label=Path(img_path).name, interactive=False)
     
-    # --- Event Handling Logic ---
-    
-    # ... (upload, modal, start over handlers are correct)
+    # --- Event Handling Logic (Unchanged and Correct) ---
     def show_patient_info(files): return gr.update(visible=True) if files else gr.update(visible=False)
     image_input.upload(fn=show_patient_info, inputs=image_input, outputs=patient_info_modal)
     async def submit_and_hide_modal(name, age, files):
@@ -121,30 +121,7 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
     submit_analysis_btn.click(fn=submit_and_hide_modal, inputs=[patient_name_modal, patient_age_modal, image_input], outputs=[uploader_column, results_column, result_images, result_label, patient_info_modal])
     cancel_btn.click(lambda: (gr.update(visible=False), None), None, [patient_info_modal, image_input])
     start_over_btn.click(fn=None, js="() => { window.location.reload(); }")
-
-    # --- SAMPLE PAGE LOGIC (THE DEFINITIVE FIX) ---
-    def on_sample_select(evt: gr.SelectData):
-        return evt.value
     
-    sample_gallery.select(
-        fn=on_sample_select,
-        inputs=None, # The event data is passed automatically
-        outputs=[hidden_sample_analyze_btn]
-    )
-    
-    async def handle_sample_analysis(selected_image_path: str):
-        if not selected_image_path:
-            raise gr.Error("Sample image path is missing.")
-        analysis_results = await process_analysis("Sample User", 0, [selected_image_path], is_sample=True)
-        return [gr.update(visible=True), gr.update(visible=False), *analysis_results]
-        
-    hidden_sample_analyze_btn.click(
-        fn=handle_sample_analysis, 
-        inputs=[hidden_sample_analyze_btn],
-        outputs=[main_app, samples_page, uploader_column, results_column, result_images, result_label]
-    )
-    
-    # --- Page Navigation ---
     all_pages = [main_app, history_page, samples_page]
     async def show_history_page_and_refresh(): records_update = await refresh_history_table(); return [gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), records_update]
     def show_samples_page(): return [gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)]
