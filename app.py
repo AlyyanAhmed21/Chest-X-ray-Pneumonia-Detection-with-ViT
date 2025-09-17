@@ -36,7 +36,22 @@ async def refresh_history_table():
     return gr.update(value=data)
 
 # --- Gradio UI Definition ---
-css = "..." # (CSS is the same as the previous correct version)
+css = """
+/* --- Professional Dark Theme & Fonts --- */
+:root { --primary-hue: 220 !important; --secondary-hue: 210 !important; --neutral-hue: 210 !important; --body-background-fill: #111827 !important; --block-background-fill: #1F2937 !important; --block-border-width: 1px !important; --border-color-accent: #374151 !important; --background-fill-secondary: #1F2937 !important;}
+/* --- Header & Title Styling --- */
+#app_header { text-align: center; }
+#app_title { font-size: 2.8rem !important; font-weight: 700 !important; color: #FFFFFF !important; padding-top: 1rem; }
+#app_subtitle { font-size: 1.2rem !important; color: #9CA3AF !important; margin-bottom: 2rem; }
+/* --- Layout, Spacing, and Component Styling --- */
+#main_container { gap: 2rem; }
+#results_gallery .gallery-item { padding: 0.25rem !important; background-color: #374151; border: 1px solid #374151 !important; }
+#bottom_controls { max-width: 600px; margin: 2.5rem auto 1rem auto; }
+#bottom_controls .gr-accordion > .gr-block-label { text-align: center !important; display: block !important; }
+/* --- FIX: Style the sample gallery for a cleaner look --- */
+#sample_gallery { background-color: transparent !important; border: none !important; }
+#sample_gallery .gallery-item { box-shadow: 0 0 5px rgba(0,0,0,0.5); border-radius: 8px !important; }
+"""
 with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue"), css=css, title="Pneumonia Detection AI") as demo:
     
     with gr.Column() as main_app:
