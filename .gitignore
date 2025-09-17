@@ -19,6 +19,7 @@ venv.bak/
 /artifacts/data_ingestion/
 /artifacts/data_transformation/
 /artifacts/model_evaluation/
+/artifacts/model_training/model/
 /logs/
 /mlruns/
 # DVC's internal cache should NEVER be committed.
