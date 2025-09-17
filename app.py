@@ -99,19 +99,31 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
 
     with gr.Column(visible=False) as samples_page:
         gr.Markdown("# 🖼️ Sample Image Library", elem_classes="app_title")
-        gr.Markdown("You can download these sample images to test the tool on the main page.")
+        gr.Markdown("Right-click on any image and select **'Save Image As...'** to download it for testing on the main page.")
         back_to_main_btn_samp = gr.Button("⬅️ Back to Main App")
         
         with gr.Row():
             with gr.Column():
                 gr.Markdown("### Normal Cases")
-                for img_path in NORMAL_SAMPLES:
-                    gr.File(value=img_path, label=Path(img_path).name, interactive=False)
+                # Use a Gallery to display the images visually
+                gr.Gallery(
+                    value=NORMAL_SAMPLES,
+                    label="Normal X-Rays",
+                    columns=5,
+                    object_fit="contain",
+                    height="auto"
+                )
             
             with gr.Column():
                 gr.Markdown("### Pneumonia Cases")
-                for img_path in PNEUMONIA_SAMPLES:
-                    gr.File(value=img_path, label=Path(img_path).name, interactive=False)
+                # Use a Gallery for the pneumonia samples as well
+                gr.Gallery(
+                    value=PNEUMONIA_SAMPLES,
+                    label="Pneumonia X-Rays",
+                    columns=5,
+                    object_fit="contain",
+                    height="auto"
+                )
     
     # --- Event Handling Logic (Unchanged and Correct) ---
     def show_patient_info(files): return gr.update(visible=True) if files else gr.update(visible=False)
