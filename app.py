@@ -1,10 +1,12 @@
+# app.py (The Definitive Final Version)
+
 import gradio as gr
 from pathlib import Path
 import asyncio
 
 # Import backend components
 from app.prediction import PredictionPipeline
-from app.database import add_patient_record, get_all_records
+from app.database import add_patient_record, get_all_records, clear_all_records # Import the new function
 
 # --- Initialization ---
 prediction_pipeline = PredictionPipeline()
@@ -35,16 +37,15 @@ async def refresh_history_table():
 # --- Gradio UI Definition ---
 css = """
 /* --- Professional Dark Theme & Fonts --- */
-:root { --primary-hue: 220 !important; --secondary-hue: 210 !important; --neutral-hue: 210 !important; --body-background-fill: #111827 !important; --block-background-fill: #1F2937 !important; --block-border-width: 1px !important; --border-color-accent: #374151 !important; --background-fill-secondary: #1F2937 !important;}
-/* --- Header & Title Styling --- */
+:root { --primary-hue: 220 !important; --secondary-hue: 210 !important; --neutral-hue: 210 !important; --body-background-fill: #111827 !important; --block-background-fill: #1F2337 !important; --block-border-width: 1px !important; --border-color-accent: #374151 !important; --background-fill-secondary: #1F2937 !important;}
+/* --- Header & Title Styling (THE FIX) --- */
 #app_header { text-align: center; max-width: 900px; margin: 0 auto; }
-#app_title { font-size: 2.8rem !important; font-weight: 700 !important; color: #FFFFFF !important; padding-top: 1rem; }
-#app_subtitle { font-size: 1.2rem !important; color: #9CA3AF !important; margin-bottom: 2rem; }
+#app_title { font-size: 3rem !important; font-weight: 800 !important; color: #FFFFFF !important; padding-top: 1rem; }
+#app_subtitle { font-size: 1.25rem !important; color: #9CA3AF !important; margin-bottom: 2rem; }
 /* --- Layout and Spacing --- */
-#main_container { gap: 2rem; max-width: 900px; margin: 0 auto; }
+#main_container { gap: 2rem; max-width: 700px; margin: 0 auto; } /* Made it slightly narrower */
 #results_gallery .gallery-item { padding: 0.25rem !important; background-color: #374151; border: 1px solid #374151 !important; }
 #bottom_controls { max-width: 500px; margin: 2.5rem auto 1rem auto; }
-#bottom_controls .gr-accordion > .gr-block-label { text-align: center !important; display: block !important; }
 """
 with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue"), css=css, title="Pneumonia Detection AI") as demo:
     
@@ -68,22 +69,22 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
             with gr.Row():
                 submit_analysis_btn = gr.Button("Analyze Images", variant="primary")
                 cancel_btn = gr.Button("Cancel", variant="stop")
-        
-        # --- "About" Section (RESTORED) ---
         with gr.Column(elem_id="bottom_controls"):
             with gr.Accordion("About this Tool", open=False):
                 gr.Markdown(
                     """
-                    ### MLOps-Powered Pneumonia Detection
-                    This application demonstrates a complete, end-to-end MLOps pipeline for medical image classification. It leverages a state-of-the-art **Vision Transformer (ViT)** model, fine-tuned on a public dataset of chest X-ray images to distinguish between Normal and Pneumonia cases.
+                    ### 🩺 MLOps-Powered Pneumonia Detection  
                     
-                    **Disclaimer:** This tool is for demonstration and educational purposes only and is **not a substitute for professional medical advice.**
-
+                    This project showcases a complete **end-to-end MLOps pipeline** for medical image classification.  
+                    It leverages a cutting-edge **Vision Transformer (ViT)** model, fine-tuned on publicly available chest X-ray datasets, to classify images into **Normal** or **Pneumonia** cases.  
+                    
+                    ⚠️ **Disclaimer:** This application is intended **solely for educational and demonstration purposes**. It is **not a medical diagnostic tool** and must not be used as a substitute for professional medical advice.  
+                    
                     ---
-
-                    **Project Team:**
-                    *   **Alyyan Ahmed** - ML Engineer & Developer
-                    *   **Munim Akbar** - ML Engineer & Developer
+                    
+                    ### 👥 Project Team  
+                    - **Alyyan Ahmed** — ML Engineer & Developer  
+                    - **Munim Akbar** — ML Engineer & Developer  
                     """
                 )
             with gr.Row():
@@ -95,37 +96,27 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
         with gr.Row():
             back_to_main_btn_hist = gr.Button("⬅️ Back to Main App")
             refresh_history_btn = gr.Button("Refresh History")
+            # --- NEW: Clear History Button ---
+            clear_history_btn = gr.Button("⚠️ Clear All History", variant="stop")
         history_df = gr.DataFrame(headers=["Name", "Age", "Prediction", "Confidence", "Date"], row_count=10, interactive=False)
 
     with gr.Column(visible=False) as samples_page:
         gr.Markdown("# 🖼️ Sample Image Library", elem_classes="app_title")
-        gr.Markdown("Right-click on any image and select **'Save Image As...'** to download it for testing on the main page.")
+        gr.Markdown("You can download these sample images to test the tool on the main page.")
         back_to_main_btn_samp = gr.Button("⬅️ Back to Main App")
-        
         with gr.Row():
             with gr.Column():
                 gr.Markdown("### Normal Cases")
-                # Use a Gallery to display the images visually
-                gr.Gallery(
-                    value=NORMAL_SAMPLES,
-                    label="Normal X-Rays",
-                    columns=5,
-                    object_fit="contain",
-                    height="auto"
-                )
-            
+                for img_path in NORMAL_SAMPLES:
+                    gr.File(value=img_path, label=Path(img_path).name, interactive=False)
             with gr.Column():
                 gr.Markdown("### Pneumonia Cases")
-                # Use a Gallery for the pneumonia samples as well
-                gr.Gallery(
-                    value=PNEUMONIA_SAMPLES,
-                    label="Pneumonia X-Rays",
-                    columns=5,
-                    object_fit="contain",
-                    height="auto"
-                )
+                for img_path in PNEUMONIA_SAMPLES:
+                    gr.File(value=img_path, label=Path(img_path).name, interactive=False)
     
-    # --- Event Handling Logic (Unchanged and Correct) ---
+    # --- Event Handling Logic ---
+    
+    # ... (main page handlers are correct)
     def show_patient_info(files): return gr.update(visible=True) if files else gr.update(visible=False)
     image_input.upload(fn=show_patient_info, inputs=image_input, outputs=patient_info_modal)
     async def submit_and_hide_modal(name, age, files):
@@ -134,8 +125,10 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
     cancel_btn.click(lambda: (gr.update(visible=False), None), None, [patient_info_modal, image_input])
     start_over_btn.click(fn=None, js="() => { window.location.reload(); }")
     
+    # --- Page Navigation (correct) ---
     all_pages = [main_app, history_page, samples_page]
-    async def show_history_page_and_refresh(): records_update = await refresh_history_table(); return [gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), records_update]
+    async def show_history_page_and_refresh():
+        records_update = await refresh_history_table(); return [gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), records_update]
     def show_samples_page(): return [gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)]
     def show_main_page(): return [gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)]
     
@@ -144,7 +137,17 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
     back_to_main_btn_hist.click(fn=show_main_page, outputs=all_pages)
     back_to_main_btn_samp.click(fn=show_main_page, outputs=all_pages)
     
+    # --- History Page Logic ---
     refresh_history_btn.click(fn=refresh_history_table, outputs=history_df)
+    
+    # --- NEW: Clear History Logic ---
+    async def clear_history_and_refresh():
+        deleted_count = await clear_all_records()
+        gr.Info(f"Successfully deleted {deleted_count} records.")
+        # After deleting, immediately refresh the table to show it's empty
+        return await refresh_history_table()
+    clear_history_btn.click(fn=clear_history_and_refresh, outputs=history_df)
+    
     demo.load(fn=refresh_history_table, outputs=history_df)
 
 # --- Launch the App ---
