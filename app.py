@@ -1,29 +1,26 @@
-# app.py (Final Version with Local Samples, Checkbox Selector, and UI Fixes)
+# app.py (Final Version with Working Sample Gallery)
 
 import gradio as gr
 from pathlib import Path
+from huggingface_hub import snapshot_download
 import asyncio
-from PIL import Image
 
 from app.prediction import PredictionPipeline
 from app.database import add_patient_record, get_all_records
 
 # --- Initialization ---
 prediction_pipeline = PredictionPipeline()
-# --- FIX: Point to the locally cloned sample images directory from setup.sh ---
-SAMPLE_IMAGE_DIR = Path("sample_images") 
+HF_DATASET_REPO = "ALYYAN/chest-xray-pneumonia-samples"
 try:
+    SAMPLE_IMAGE_DIR = Path(snapshot_download(repo_id=HF_DATASET_REPO, repo_type="dataset"))
     SAMPLE_IMAGES = [str(p) for p in sorted(list(SAMPLE_IMAGE_DIR.glob('*/*.jpeg')))]
-    if not SAMPLE_IMAGES:
-        raise FileNotFoundError
-except FileNotFoundError:
-    print("Warning: 'sample_images' directory not found or is empty. Samples will be unavailable.")
+except Exception as e:
+    print(f"Could not download sample images: {e}")
     SAMPLE_IMAGES = []
 
-
 # --- Core Logic Functions (Unchanged and Correct) ---
+# ... (process_analysis and refresh_history_table are the same as the last working version)
 async def process_analysis(patient_name, patient_age, image_list, is_sample=False):
-    # ... (code is the same)
     if not is_sample and (not patient_name or patient_age is None): raise gr.Error("Patient Name and Age are required.")
     if not image_list: raise gr.Error("At least one image is required.")
     result = prediction_pipeline.predict(image_list)
@@ -32,9 +29,7 @@ async def process_analysis(patient_name, patient_age, image_list, is_sample=Fals
     if not is_sample: await add_patient_record(str(patient_name), int(patient_age), final_pred, final_conf)
     confidences = {"NORMAL": 0.0, "PNEUMONIA": 0.0}; confidences[final_pred] = final_conf; confidences["NORMAL" if final_pred == "PNEUMONIA" else "PNEUMONIA"] = 1 - final_conf
     return [gr.update(visible=False), gr.update(visible=True), gr.update(value=result["watermarked_images"]), gr.update(value=confidences)]
-
 async def refresh_history_table():
-    # ... (code is the same)
     records = await get_all_records()
     data = [[r.get('name'), r.get('age'), r.get('prediction_result'), f"{r.get('confidence_score', 0):.2%}", r.get('timestamp').strftime('%Y-%m-%d %H:%M')] for r in records] if records else []
     return gr.update(value=data)
@@ -58,6 +53,10 @@ css = """
 """
 with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue"), css=css, title="Pneumonia Detection AI") as demo:
     
+    # --- State to track selected sample images ---
+    selected_samples = gr.State([])
+
+    # --- UI LAYOUT (Unchanged) ---
     with gr.Column() as main_app:
         # ... (Main page layout is the same)
         with gr.Column(elem_id="app_header"):
@@ -85,9 +84,7 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
             with gr.Row():
                 samples_btn = gr.Button("Try Sample Images")
                 history_btn = gr.Button("View Patient History")
-                
     with gr.Column(visible=False) as history_page:
-        # ... (History page layout is the same)
         gr.Markdown("# 📜 Patient Record History", elem_classes="app_title")
         with gr.Row():
             back_to_main_btn_hist = gr.Button("⬅️ Back to Main App")
@@ -97,54 +94,95 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
     # --- SAMPLES PAGE (THE DEFINITIVE FIX) ---
     with gr.Column(visible=False) as samples_page:
         gr.Markdown("# 🖼️ Sample Image Library", elem_classes="app_title")
-        gr.Markdown("Select up to 3 images, then click 'Analyze'.")
+        gr.Markdown("Select up to 3 images by clicking on them, then click 'Analyze'.")
         
-        # Use a CheckboxGroup with images for selection
-        sample_checkboxes = gr.CheckboxGroup(
+        # This gallery will show the images
+        sample_gallery = gr.Gallery(
+            value=SAMPLE_IMAGES,
             label="Sample Images",
-            # A choice is a tuple: (Image for display, file path for value)
-            choices=[(Image.open(p), p) for p in SAMPLE_IMAGES],
-            type="value",
-            elem_id="sample_gallery" # Use the gallery CSS
+            columns=5, height=400,
+            elem_id="sample_gallery"
         )
+        
+        # This hidden textbox will store the list of selected file paths
+        selected_samples_textbox = gr.Textbox(visible=False)
         
         with gr.Row():
             analyze_samples_btn = gr.Button("Analyze Selected Samples", variant="primary")
             back_to_main_btn_samp = gr.Button("⬅️ Back to Main App")
-    
+
     # --- Event Handling Logic ---
-    
-    # ... (upload, modal, start over handlers are correct)
+    # ... (handlers for main upload workflow are correct)
     def show_patient_info(files): return gr.update(visible=True) if files else gr.update(visible=False)
     image_input.upload(fn=show_patient_info, inputs=image_input, outputs=patient_info_modal)
     async def submit_and_hide_modal(name, age, files):
-        analysis_results = await process_analysis(name, age, files)
-        return [*analysis_results, gr.update(visible=False)]
+        analysis_results = await process_analysis(name, age, files); return [*analysis_results, gr.update(visible=False)]
     submit_analysis_btn.click(fn=submit_and_hide_modal, inputs=[patient_name_modal, patient_age_modal, image_input], outputs=[uploader_column, results_column, result_images, result_label, patient_info_modal])
     cancel_btn.click(lambda: (gr.update(visible=False), None), None, [patient_info_modal, image_input])
     start_over_btn.click(fn=None, js="() => { window.location.reload(); }")
 
     # --- SAMPLE PAGE LOGIC (THE FIX) ---
-    async def handle_sample_analysis(selected_images: list):
-        # selected_images is now a list of file paths from the checkbox group
+    
+    # JavaScript to handle multi-select on the gallery
+    # When an image is clicked, this JS will add/remove its path from the hidden textbox
+    # and add/remove a 'selected' class for a visual border.
+    select_js = """
+    (evt) => {
+        const gallery = document.querySelector('#sample_gallery .grid-container');
+        const clicked_img = gallery.children[evt.index];
+        const selected_paths_input = document.querySelector('#selected_samples_textbox textarea');
+        let selected_paths = selected_paths_input.value ? selected_paths_input.value.split(',') : [];
+        const current_path = clicked_img.querySelector('img').alt;
+
+        if (clicked_img.classList.contains('selected')) {
+            clicked_img.classList.remove('selected');
+            selected_paths = selected_paths.filter(p => p !== current_path);
+        } else {
+            if (selected_paths.length < 3) {
+                clicked_img.classList.add('selected');
+                selected_paths.push(current_path);
+            } else {
+                // This is a simple browser alert. Gradio's gr.Warning is better for the final check.
+                alert("You can select a maximum of 3 images.");
+            }
+        }
+        
+        // Return the updated list of paths to the hidden textbox
+        return selected_paths.join(',');
+    }
+    """
+    
+    # We need to add a little CSS for the selection border
+    demo.css += "#sample_gallery .gallery-item.selected { border: 4px solid var(--primary-500) !important; }"
+    
+    # Hidden textbox to store the paths
+    selected_samples_textbox = gr.Textbox(value="", visible=False, elem_id="selected_samples_textbox")
+
+    sample_gallery.select(fn=None, _js=select_js, outputs=[selected_samples_textbox])
+
+    async def handle_sample_analysis(selected_paths_str: str):
+        # The input is now a comma-separated string of paths from our hidden textbox
+        selected_images = selected_paths_str.split(',') if selected_paths_str else []
+        
         if not selected_images: raise gr.Error("Please select at least one sample image.")
         if len(selected_images) > 3: raise gr.Error("Please select no more than 3 sample images.")
         
         analysis_results = await process_analysis("Sample User", 0, selected_images, is_sample=True)
         
-        # Return updates to show the results on the main page and hide this page
-        return [
-            gr.update(visible=True),   # main_app
-            gr.update(visible=False),  # samples_page
-            *analysis_results
-        ]
-    analyze_samples_btn.click(fn=handle_sample_analysis, inputs=[sample_checkboxes], outputs=[main_app, samples_page, uploader_column, results_column, result_images, result_label])
+        return {
+            main_app: gr.update(visible=True), 
+            samples_page: gr.update(visible=False),
+            # Unpack dictionary updates for specific components
+            uploader_column: analysis_results[0],
+            results_column: analysis_results[1],
+            result_images: analysis_results[2],
+            result_label: analysis_results[3],
+        }
+    analyze_samples_btn.click(fn=handle_sample_analysis, inputs=[selected_samples_textbox], outputs=[main_app, samples_page, uploader_column, results_column, result_images, result_label])
 
     # ... (Page Navigation is correct)
     all_pages = [main_app, history_page, samples_page]
-    async def show_history_page_and_refresh():
-        records_update = await refresh_history_table()
-        return [gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), records_update]
+    async def show_history_page_and_refresh(): records_update = await refresh_history_table(); return [gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), records_update]
     def show_samples_page(): return [gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)]
     def show_main_page(): return [gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)]
     history_btn.click(fn=show_history_page_and_refresh, outputs=all_pages + [history_df])
