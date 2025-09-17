@@ -1,6 +1,8 @@
-# .github/workflows/main.yml (Final, Simplified Version)
+# .github/workflows/main.yml
+# This workflow syncs the entire GitHub repository to a Hugging Face Space.
+# It assumes large model files will be manually uploaded to the Space.
 
-name: Deploy App to Hugging Face Spaces
+name: Sync to Hugging Face Space
 
 on:
   push:
@@ -8,36 +10,26 @@ on:
       - main
 
 jobs:
-  deploy-to-hub:
+  sync-to-hub:
     runs-on: ubuntu-latest
     
     steps:
-      # Step 1: Check out your app's source code (no LFS needed)
+      # Step 1: Check out your code from GitHub
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # Step 2: Push to HF Space
-      # This step copies ONLY your application code. The model will be
-      # downloaded by the app itself when the Space starts.
+      # Step 2: Push the code to the Hugging Face Space remote
       - name: Push to HF Space
         env:
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
           HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "GitHub Action"
+          # Add the Hugging Face Space as a remote named 'hf_space'
+          git remote add hf_space https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}
           
-          echo "Cloning target HF Space..."
-          git clone https://user:$HF_TOKEN@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
-          
-          echo "Syncing application files..."
-          # Note: We are NO LONGER copying the 'artifacts' folder
-          rsync -av --delete --exclude='.git/' app/ app.py requirements.txt README.md setup.sh hf_space_repo/
-          
-          cd hf_space_repo
-          
-          echo "Committing and pushing to Space..."
-          git add .
-          git commit -m "Automatic deployment from GitHub Action" || echo "No changes to commit"
-          git push
+          # Force push the local 'main' branch to the remote's 'main' branch
+          # This ensures the Space is an exact mirror of your GitHub repo
+          git push --force hf_space main
