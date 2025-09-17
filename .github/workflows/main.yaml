@@ -1,4 +1,4 @@
-# .github/workflows/main.yml (Final Version Combining Your Auth and the LFS Fix)
+# .github/workflows/main.yml (Final, Simplified Version)
 
 name: Deploy App to Hugging Face Spaces
 
@@ -12,57 +12,32 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository from GitHub
+      # Step 1: Check out your app's source code (no LFS needed)
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          lfs: true # Ensures the large model file is downloaded here
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
+      # Step 2: Push to HF Space
+      # This step copies ONLY your application code. The model will be
+      # downloaded by the app itself when the Space starts.
       - name: Push to HF Space
         env:
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
           HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # Configure git identity
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "GitHub Actions"
-
-          # Clone the Hugging Face Space using token auth
+          git config --global user.name "GitHub Action"
+          
           echo "Cloning target HF Space..."
           git clone https://user:$HF_TOKEN@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME} hf_space_repo
-
-          # Sync application files into the cloned repo
-          echo "Syncing files..."
-          rsync -av app/ app.py requirements.txt README.md artifacts/model_training/model/ hf_space_repo/
-
-          # Navigate into the cloned repo
-          cd hf_space_repo
-
-          # --- THIS IS THE CRUCIAL MISSING STEP ---
-          echo "Configuring Git LFS for push..."
-          # 1. Install LFS (it's pre-installed on runners, but `install` activates it)
-          git lfs install
-          # 2. Tell LFS to track the large file types in this repo
-          git lfs track "*.safetensors"
-          git lfs track "*.pt"
-          git lfs track "*.bin"
-          # 3. Ensure the .gitattributes file is staged
-          git add .gitattributes
           
-          echo "Committing changes..."
-          # Now, add all the synced files
+          echo "Syncing application files..."
+          # Note: We are NO LONGER copying the 'artifacts' folder
+          rsync -av --delete --exclude='.git/' app/ app.py requirements.txt README.md setup.sh hf_space_repo/
+          
+          cd hf_space_repo
+          
+          echo "Committing and pushing to Space..."
           git add .
           git commit -m "Automatic deployment from GitHub Action" || echo "No changes to commit"
-
-          # Push using token auth. LFS will now intercept the large files.
-          echo "Pushing to HF Space..."
-          git push https://user:$HF_TOKEN@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}.git
+          git push
