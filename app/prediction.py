@@ -1,7 +1,7 @@
 # app/prediction.py
 
 import torch
-from transformers import ViTImageProcessor, ViTForImageClassification
+from transformers import ViTImageProcessor, ViTForImageClassification, AutoImageProcessor, ResNetForImageClassification
 from PIL import Image
 from pathlib import Path
 import numpy as np
@@ -13,10 +13,41 @@ ImageType = Union[str, Path, bytes, np.ndarray]
 class PredictionPipeline:
     def __init__(self, model_path: Path = Path("artifacts/model_training/model")):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.processor = ViTImageProcessor.from_pretrained(model_path)
-        self.model = ViTForImageClassification.from_pretrained(model_path).to(self.device)
-        self.model.eval()
-        self.id2label = self.model.config.id2label
+        
+        # --- Pneumonia Model (our fine-tuned model) ---
+        self.pneumonia_processor = ViTImageProcessor.from_pretrained(model_path)
+        self.pneumonia_model = ViTForImageClassification.from_pretrained(model_path).to(self.device)
+        self.pneumonia_model.eval()
+        self.id2label = self.pneumonia_model.config.id2label
+
+        # --- Sanity Check Model (general purpose) ---
+        # This model knows what many things are, including X-rays.
+        self.sanity_processor = AutoImageProcessor.from_pretrained("microsoft/resnet-50")
+        self.sanity_model = ResNetForImageClassification.from_pretrained("microsoft/resnet-50").to(self.device)
+        self.sanity_model.eval()
+
+    def is_likely_xray(self, image: Image.Image) -> bool:
+        """
+        Uses the general-purpose ResNet-50 model to check if the image
+        is likely a chest X-ray.
+        """
+        with torch.no_grad():
+            inputs = self.sanity_processor(images=image, return_tensors="pt").to(self.device)
+            outputs = self.sanity_model(**inputs)
+            logits = outputs.logits
+            
+            # Get the top 5 predicted classes
+            top5_probs, top5_indices = torch.topk(logits.softmax(-1), 5)
+            
+            # The model's labels are in its config. We look for 'x-ray' or 'chest'.
+            for idx in top5_indices[0]:
+                label = self.sanity_model.config.id2label[idx.item()].lower()
+                if "x-ray" in label or "chest" in label or "radiograph" in label:
+                    print(f"Sanity check passed: Image classified as '{label}'")
+                    return True
+        
+        print("Sanity check failed: Image is not classified as an X-ray.")
+        return False
 
     def predict(self, image_sources: List[ImageType]) -> Dict[str, Any]:
         if not image_sources:
@@ -33,15 +64,18 @@ class PredictionPipeline:
                 else:
                     image = Image.open(source).convert("RGB")
                 
+                # --- NEW: Perform the sanity check first! ---
+                if not self.is_likely_xray(image):
+                    raise ValueError("Image does not appear to be a chest X-ray.")
+
                 valid_images_as_np.append(np.array(image))
                 
-                inputs = self.processor(images=image, return_tensors="pt").to(self.device)
+                inputs = self.pneumonia_processor(images=image, return_tensors="pt").to(self.device)
                 with torch.no_grad():
-                    outputs = self.model(**inputs)
+                    outputs = self.pneumonia_model(**inputs)
                     logits = outputs.logits
                     all_logits.append(logits)
                     
-                    # --- NEW: Calculate individual prediction ---
                     ind_probs = torch.nn.functional.softmax(logits, dim=-1)
                     ind_conf, ind_idx = torch.max(ind_probs, dim=-1)
                     individual_results.append({
@@ -50,13 +84,14 @@ class PredictionPipeline:
                     })
 
             except Exception as e:
-                print(f"Skipping a corrupted or invalid image file. Error: {e}")
+                print(f"Skipping an invalid image file. Error: {e}")
                 individual_results.append({"prediction": "Error", "confidence": 0})
                 continue
         
         if not all_logits:
-             return {"error": "All images were invalid."}
+             return {"error": "Invalid Image", "details": "All uploaded files were invalid or did not appear to be chest X-rays. Please upload a clear, frontal chest X-ray image."}
 
+        # ... (Aggregate prediction and watermarking are the same) ...
         avg_logits = torch.mean(torch.stack(all_logits), dim=0)
         probabilities = torch.nn.functional.softmax(avg_logits, dim=-1)
         confidence_score, predicted_class_idx = torch.max(probabilities, dim=-1)
@@ -64,15 +99,6 @@ class PredictionPipeline:
         final_prediction = self.id2label[predicted_class_idx.item()]
         final_confidence = confidence_score.item()
 
-        # --- NEW: Add confidence check ---
-        if final_confidence < 0.60:
-            return {
-                "error": "Low Confidence Prediction",
-                "details": f"The model's confidence of {final_confidence:.1%} is too low. "
-                           "Please ensure the uploaded image is a clear, frontal chest X-ray."
-            }
-
-        # --- Watermarking (same as before) ---
         watermarked_images = [
             add_watermark(img_np, res["prediction"], res["confidence"])
             for img_np, res in zip(valid_images_as_np, individual_results)
@@ -85,4 +111,3 @@ class PredictionPipeline:
             "individual_results": individual_results,
             "watermarked_images": watermarked_images
         }
-
