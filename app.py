@@ -1,27 +1,30 @@
-# app.py (Final Version with Checkbox Samples and Watermark Fix)
+# app.py (Final Version with Local Samples, Checkbox Selector, and UI Fixes)
 
 import gradio as gr
 from pathlib import Path
-from huggingface_hub import snapshot_download
 import asyncio
+from PIL import Image
 
 from app.prediction import PredictionPipeline
 from app.database import add_patient_record, get_all_records
 
 # --- Initialization ---
 prediction_pipeline = PredictionPipeline()
-HF_DATASET_REPO = "ALYYAN/chest-xray-pneumonia-samples"
+# --- FIX: Point to the locally cloned sample images directory from setup.sh ---
+SAMPLE_IMAGE_DIR = Path("sample_images") 
 try:
-    SAMPLE_IMAGE_DIR = Path(snapshot_download(repo_id=HF_DATASET_REPO, repo_type="dataset"))
-    SAMPLE_IMAGES = [str(p) for p in list(SAMPLE_IMAGE_DIR.glob('*/*.jpeg'))]
-except Exception as e:
-    print(f"Could not download sample images: {e}")
+    SAMPLE_IMAGES = [str(p) for p in sorted(list(SAMPLE_IMAGE_DIR.glob('*/*.jpeg')))]
+    if not SAMPLE_IMAGES:
+        raise FileNotFoundError
+except FileNotFoundError:
+    print("Warning: 'sample_images' directory not found or is empty. Samples will be unavailable.")
     SAMPLE_IMAGES = []
 
-# --- Core Logic (Async Functions - Unchanged) ---
+
+# --- Core Logic Functions (Unchanged and Correct) ---
 async def process_analysis(patient_name, patient_age, image_list, is_sample=False):
     # ... (code is the same)
-    if not is_sample and (not patient_name or patient_age is None or str(patient_age).strip() == ""): raise gr.Error("Patient Name and Age are required.")
+    if not is_sample and (not patient_name or patient_age is None): raise gr.Error("Patient Name and Age are required.")
     if not image_list: raise gr.Error("At least one image is required.")
     result = prediction_pipeline.predict(image_list)
     if "error" in result: raise gr.Error(result["error"])
@@ -29,6 +32,7 @@ async def process_analysis(patient_name, patient_age, image_list, is_sample=Fals
     if not is_sample: await add_patient_record(str(patient_name), int(patient_age), final_pred, final_conf)
     confidences = {"NORMAL": 0.0, "PNEUMONIA": 0.0}; confidences[final_pred] = final_conf; confidences["NORMAL" if final_pred == "PNEUMONIA" else "PNEUMONIA"] = 1 - final_conf
     return [gr.update(visible=False), gr.update(visible=True), gr.update(value=result["watermarked_images"]), gr.update(value=confidences)]
+
 async def refresh_history_table():
     # ... (code is the same)
     records = await get_all_records()
@@ -90,16 +94,18 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
             refresh_history_btn = gr.Button("Refresh History")
         history_df = gr.DataFrame(headers=["Name", "Age", "Prediction", "Confidence", "Date"], row_count=10, interactive=False)
 
-    # --- SAMPLES PAGE (THE FIX) ---
+    # --- SAMPLES PAGE (THE DEFINITIVE FIX) ---
     with gr.Column(visible=False) as samples_page:
         gr.Markdown("# 🖼️ Sample Image Library", elem_classes="app_title")
-        gr.Markdown("Select up to 3 images, then click 'Analyze Selected Samples'.")
+        gr.Markdown("Select up to 3 images, then click 'Analyze'.")
         
-        # Use a CheckboxGroup with images as choices
+        # Use a CheckboxGroup with images for selection
         sample_checkboxes = gr.CheckboxGroup(
             label="Sample Images",
-            choices=[(Image.open(p), p) for p in SAMPLE_IMAGES], # Tuple of (PIL Image for display, path for value)
-            type="value"
+            # A choice is a tuple: (Image for display, file path for value)
+            choices=[(Image.open(p), p) for p in SAMPLE_IMAGES],
+            type="value",
+            elem_id="sample_gallery" # Use the gallery CSS
         )
         
         with gr.Row():
@@ -108,7 +114,7 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
     
     # --- Event Handling Logic ---
     
-    # ... (upload, modal, start_over handlers are correct)
+    # ... (upload, modal, start over handlers are correct)
     def show_patient_info(files): return gr.update(visible=True) if files else gr.update(visible=False)
     image_input.upload(fn=show_patient_info, inputs=image_input, outputs=patient_info_modal)
     async def submit_and_hide_modal(name, age, files):
@@ -126,15 +132,12 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
         
         analysis_results = await process_analysis("Sample User", 0, selected_images, is_sample=True)
         
-        return {
-            main_app: gr.update(visible=True), 
-            samples_page: gr.update(visible=False),
-            # Unpack dictionary updates for specific components
-            uploader_column: analysis_results[0],
-            results_column: analysis_results[1],
-            result_images: analysis_results[2],
-            result_label: analysis_results[3],
-        }
+        # Return updates to show the results on the main page and hide this page
+        return [
+            gr.update(visible=True),   # main_app
+            gr.update(visible=False),  # samples_page
+            *analysis_results
+        ]
     analyze_samples_btn.click(fn=handle_sample_analysis, inputs=[sample_checkboxes], outputs=[main_app, samples_page, uploader_column, results_column, result_images, result_label])
 
     # ... (Page Navigation is correct)
