@@ -1,35 +1,30 @@
-# app.py (Final, Definitive, and Working Version)
+# app.py (Definitive Final Version)
 
 import gradio as gr
 from pathlib import Path
 import asyncio
+from PIL import Image
 
-# Import backend components from the 'app' folder
+# Import backend components
 from app.prediction import PredictionPipeline
 from app.database import add_patient_record, get_all_records
 
 # --- Initialization ---
 prediction_pipeline = PredictionPipeline()
-
-# --- Point to the locally cloned sample images directory from setup.sh ---
+# Point to the locally cloned sample images directory from setup.sh
 SAMPLE_IMAGE_DIR = Path("sample_images")
 try:
-    # Ensure the directory exists and has images before creating the list
     if SAMPLE_IMAGE_DIR.is_dir():
         SAMPLE_IMAGES = [str(p) for p in sorted(list(SAMPLE_IMAGE_DIR.glob('*/*.jpeg')))]
-        if not SAMPLE_IMAGES:
-            print("Warning: 'sample_images' directory found, but it's empty.")
+        if not SAMPLE_IMAGES: raise FileNotFoundError
     else:
         raise FileNotFoundError
 except FileNotFoundError:
-    print("Warning: 'sample_images' directory not found. Please check setup.sh. Samples will be unavailable.")
+    print("Warning: 'sample_images' directory not found or empty. Please check setup.sh. Samples will be unavailable.")
     SAMPLE_IMAGES = []
 
-# --- Core Logic (Async Functions) ---
+# --- Core Logic Functions ---
 async def process_analysis(patient_name, patient_age, image_list, is_sample=False):
-    """
-    Handles the core logic: validates input, gets prediction, saves to DB, and returns UI updates.
-    """
     if not is_sample and (not patient_name or patient_age is None):
         raise gr.Error("Patient Name and Age are required.")
     if not image_list:
@@ -50,14 +45,13 @@ async def process_analysis(patient_name, patient_age, image_list, is_sample=Fals
     confidences["NORMAL" if final_pred == "PNEUMONIA" else "PNEUMONIA"] = 1 - final_conf
     
     return [
-        gr.update(visible=False), # uploader_column
-        gr.update(visible=True),  # results_column
-        gr.update(value=result["watermarked_images"]), # result_images
-        gr.update(value=confidences) # result_label
+        gr.update(visible=False),
+        gr.update(visible=True),
+        gr.update(value=result["watermarked_images"]),
+        gr.update(value=confidences)
     ]
 
 async def refresh_history_table():
-    """Fetches records from the DB and formats them for the DataFrame."""
     records = await get_all_records()
     data_for_df = []
     if records:
@@ -87,18 +81,15 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
         with gr.Column(elem_id="app_header"):
             gr.Markdown("# 🩺 Pneumonia Detection AI", elem_id="app_title")
             gr.Markdown("An AI-powered tool to assist in the diagnosis of pneumonia.", elem_id="app_subtitle")
-
         with gr.Row(elem_id="main_container"):
             with gr.Column(scale=1) as uploader_column:
                 gr.Markdown("### Upload Patient X-Rays")
                 image_input = gr.File(label="Upload up to 3 Images", file_count="multiple", file_types=["image"], type="filepath")
-            
             with gr.Column(scale=2, visible=False) as results_column:
                 gr.Markdown("### Analysis Results")
                 result_images = gr.Gallery(label="Analyzed Images", columns=3, object_fit="contain", height=350, elem_id="results_gallery")
                 result_label = gr.Label(label="Overall Prediction", num_top_classes=2)
                 start_over_btn = gr.Button("Start New Analysis", variant="secondary")
-
         with gr.Group(visible=False) as patient_info_modal:
             gr.Markdown("## Enter Patient Details", elem_classes="text-center")
             patient_name_modal = gr.Textbox(label="Patient Name", placeholder="e.g., John Doe")
@@ -106,7 +97,6 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
             with gr.Row():
                 submit_analysis_btn = gr.Button("Analyze Images", variant="primary")
                 cancel_btn = gr.Button("Cancel", variant="stop")
-
         with gr.Column(elem_id="bottom_controls"):
             with gr.Accordion("About this Tool", open=False):
                 gr.Markdown(
@@ -126,7 +116,7 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
             with gr.Row():
                 samples_btn = gr.Button("Try Sample Images")
                 history_btn = gr.Button("View Patient History")
-
+                
     with gr.Column(visible=False) as history_page:
         gr.Markdown("# 📜 Patient Record History", elem_classes="app_title")
         with gr.Row():
@@ -137,20 +127,15 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
     with gr.Column(visible=False) as samples_page:
         gr.Markdown("# 🖼️ Sample Image Library", elem_classes="app_title")
         gr.Markdown("Select up to 3 images by clicking on them, then click 'Analyze'.")
-        
         sample_gallery = gr.Gallery(value=SAMPLE_IMAGES, label="Sample Images", columns=5, height=400, elem_id="sample_gallery")
-        
-        # This hidden textbox will store the list of selected file paths
-        selected_samples_textbox = gr.Textbox(label="selected", visible=False, elem_id="selected_samples_textbox")
-        
+        selected_samples_textbox = gr.Textbox(visible=False, elem_id="selected_samples_textbox")
         with gr.Row():
             analyze_samples_btn = gr.Button("Analyze Selected Samples", variant="primary")
             back_to_main_btn_samp = gr.Button("⬅️ Back to Main App")
     
     # --- Event Handling Logic ---
     
-    def show_patient_info(files):
-        return gr.update(visible=True) if files else gr.update(visible=False)
+    def show_patient_info(files): return gr.update(visible=True) if files else gr.update(visible=False)
     image_input.upload(fn=show_patient_info, inputs=image_input, outputs=patient_info_modal)
 
     async def submit_and_hide_modal(name, age, files):
@@ -165,26 +150,26 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
     select_js = """
     (evt) => {
         const gallery = document.querySelector('#sample_gallery .grid-container');
-        const clicked_img_container = gallery.children[evt.index];
-        const selected_paths_input = document.querySelector('#selected_samples_textbox textarea');
-        let selected_paths = selected_paths_input.value ? selected_paths_input.value.split(',').filter(p => p.trim()) : [];
-        const current_path = clicked_img_container.querySelector('img').alt;
+        const clicked_container = gallery.children[evt.index];
+        const hidden_input = document.querySelector('#selected_samples_textbox textarea');
+        let selections = hidden_input.value ? hidden_input.value.split(',').filter(p => p.trim()) : [];
+        const path = clicked_container.querySelector('img').alt;
 
-        if (clicked_img_container.classList.contains('selected')) {
-            clicked_img_container.classList.remove('selected');
-            selected_paths = selected_paths.filter(p => p !== current_path);
+        if (clicked_container.classList.contains('selected')) {
+            clicked_container.classList.remove('selected');
+            selections = selections.filter(p => p !== path);
         } else {
-            if (selected_paths.length < 3) {
-                clicked_img_container.classList.add('selected');
-                selected_paths.push(current_path);
+            if (selections.length < 3) {
+                clicked_container.classList.add('selected');
+                selections.push(path);
             } else {
-                alert("You can select a maximum of 3 images.");
+                alert("Maximum of 3 images can be selected.");
             }
         }
-        return selected_paths.join(',');
+        return [selections.join(',')]; // Return value must be a list/tuple for Gradio
     }
     """
-    sample_gallery.select(fn=None, _js=select_js, outputs=[selected_samples_textbox])
+    sample_gallery.select(fn=None, js=select_js, outputs=[selected_samples_textbox])
 
     async def handle_sample_analysis(selected_paths_str: str):
         selected_images = [path for path in selected_paths_str.split(',') if path]
@@ -192,13 +177,14 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
             raise gr.Error("Please select at least one sample image to analyze.")
         
         analysis_results = await process_analysis("Sample User", 0, selected_images, is_sample=True)
+        # We need to return an update for every output component
         return [
             gr.update(visible=True),   # main_app
             gr.update(visible=False),  # samples_page
             *analysis_results
         ]
     analyze_samples_btn.click(fn=handle_sample_analysis, inputs=[selected_samples_textbox], outputs=[main_app, samples_page, uploader_column, results_column, result_images, result_label])
-    
+
     # --- Page Navigation ---
     all_pages = [main_app, history_page, samples_page]
     
@@ -207,14 +193,13 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
         return [gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), records_update]
     
     def show_samples_page():
-        # Also clear selections when navigating to the samples page
-        return [gr.update(visible=False), gr.update(visible=False), gr.update(visible=True), gr.update(value="")]
+        return [gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)]
     
     def show_main_page():
         return [gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)]
 
     history_btn.click(fn=show_history_page_and_refresh, outputs=all_pages + [history_df])
-    samples_btn.click(fn=show_samples_page, outputs=all_pages + [selected_samples_textbox])
+    samples_btn.click(fn=show_samples_page, outputs=all_pages)
     back_to_main_btn_hist.click(fn=show_main_page, outputs=all_pages)
     back_to_main_btn_samp.click(fn=show_main_page, outputs=all_pages)
     
