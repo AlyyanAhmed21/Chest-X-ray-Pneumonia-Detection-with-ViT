@@ -57,7 +57,6 @@ class PredictionPipeline:
         if not all_logits:
              return {"error": "All images were invalid."}
 
-        # --- Aggregate Prediction (same as before) ---
         avg_logits = torch.mean(torch.stack(all_logits), dim=0)
         probabilities = torch.nn.functional.softmax(avg_logits, dim=-1)
         confidence_score, predicted_class_idx = torch.max(probabilities, dim=-1)
@@ -65,7 +64,15 @@ class PredictionPipeline:
         final_prediction = self.id2label[predicted_class_idx.item()]
         final_confidence = confidence_score.item()
 
-        # --- NEW: Watermark images with their INDIVIDUAL results ---
+        # --- NEW: Add confidence check ---
+        if final_confidence < 0.60:
+            return {
+                "error": "Low Confidence Prediction",
+                "details": f"The model's confidence of {final_confidence:.1%} is too low. "
+                           "Please ensure the uploaded image is a clear, frontal chest X-ray."
+            }
+
+        # --- Watermarking (same as before) ---
         watermarked_images = [
             add_watermark(img_np, res["prediction"], res["confidence"])
             for img_np, res in zip(valid_images_as_np, individual_results)
@@ -78,3 +85,4 @@ class PredictionPipeline:
             "individual_results": individual_results,
             "watermarked_images": watermarked_images
         }
+
