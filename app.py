@@ -21,9 +21,38 @@ except FileNotFoundError:
 
 # --- Core Logic Functions (Unchanged and Correct) ---
 async def process_analysis(patient_name, patient_age, image_list, is_sample=False):
-    # ... (code is the same)
+    if not is_sample and (not patient_name or patient_age is None):
+        raise gr.Error("Patient Name and Age are required.")
+    if not image_list:
+        raise gr.Error("At least one image is required.")
+    
+    result = prediction_pipeline.predict(image_list)
+    if "error" in result:
+        raise gr.Error(result.get("details", result["error"]))
+
+    final_pred = result["final_prediction"]
+    final_conf = result["final_confidence"]
+    
+    if not is_sample:
+        await add_patient_record(str(patient_name), int(patient_age), final_pred, final_conf)
+
+    confidences = {"NORMAL": 0.0, "PNEUMONIA": 0.0}
+    confidences[final_pred] = final_conf
+    confidences["NORMAL" if final_pred == "PNEUMONIA" else "PNEUMONIA"] = 1 - final_conf
+    
+    return [
+        gr.update(visible=False),
+        gr.update(visible=True),
+        gr.update(value=result["watermarked_images"]),
+        gr.update(value=confidences)
+    ]
+
 async def refresh_history_table():
-    # ... (code is the same)
+    records = await get_all_records()
+    data_for_df = []
+    if records:
+        data_for_df = [[r.get('name'), r.get('age'), r.get('prediction_result'), f"{r.get('confidence_score', 0):.2%}", r.get('timestamp').strftime('%Y-%m-%d %H:%M')] for r in records]
+    return gr.update(value=data_for_df)
 
 # --- Gradio UI Definition ---
 css = """
