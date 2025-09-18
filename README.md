@@ -1,6 +1,6 @@
 # MLOps End-to-End Project: AI-Powered Pneumonia Detection from Chest X-Rays
 
-![Pneumonia Detection AI Banner](httpshttps://your-image-hosting-service.com/banner.png) 
+![Pneumonia Detection AI Banner](Screenshot 2025-09-18 182543.png) 
 <!-- Optional: Create a banner image and upload it to a service like imgur.com or directly to your repo -->
 
 **Live Application:** [**https://huggingface.co/spaces/ALYYAN/Pneumonia-Detection-AI**](https://huggingface.co/spaces/ALYYAN/Pneumonia-Detection-AI) <!-- Make sure this link is correct -->
