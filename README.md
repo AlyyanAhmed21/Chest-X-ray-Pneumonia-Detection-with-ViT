@@ -1,6 +1,6 @@
 # MLOps End-to-End Project: AI-Powered Pneumonia Detection from Chest X-Rays
 
-![Pneumonia Detection AI Banner](Screenshot 2025-09-18 182543.png) 
+![Pneumonia Detection AI Banner](./Screenshot%202025-09-18%20182543.png) 
 <!-- Optional: Create a banner image and upload it to a service like imgur.com or directly to your repo -->
 
 **Live Application:** [**https://huggingface.co/spaces/ALYYAN/Pneumonia-Detection-AI**](https://huggingface.co/spaces/ALYYAN/Pneumonia-Detection-AI) <!-- Make sure this link is correct -->
@@ -55,8 +55,7 @@ The project is built on a robust Continuous Integration/Continuous Deployment (C
     *   Pushes the complete application bundle to the target Hugging Face Space repository.
 5.  **Deployment & Hosting:** Hugging Face Spaces detects the new push, runs a `setup.sh` script to install system-level dependencies (like fonts), and launches the Gradio application, making it publicly accessible.
 
-![CI/CD Workflow Diagram](https://your-image-hosting-service.com/cicd-diagram.png) 
-<!-- Optional: Create a simple diagram of this workflow -->
+
 
 ## 4. Methodology: The Dual-Model Approach
 
@@ -90,23 +89,22 @@ This method ensures that the final prediction is a consensus of all available ev
 
 ## 5. Project Structure
 
-├── app/ # Gradio application files
-│ ├── database.py # MongoDB connection and functions
-│ ├── image_utils.py # Watermarking logic
-│ ├── prediction.py # Dual-model prediction pipeline
-│ └── Roboto-Bold.ttf # Bundled font for watermarking
-│
-├── src/vitClassifier/ # Training pipeline (DVC, MLflow)
-│
-├── .github/workflows/ # CI/CD pipeline (main.yml)
-│
-├── artifacts/ # Local storage for models (ignored by Git)
-│
-├── .gitignore
-├── app.py # Main Gradio app entrypoint
-├── dvc.yaml # DVC pipeline definition
-├── requirements.txt # Python dependencies
-└── README.md # Project documentation
+The repository is organized into two primary components: the training pipeline (`src`) and the deployment application (`app`).
+
+*   **`.github/workflows/`**: Contains the GitHub Actions CI/CD pipeline (`main.yml`) for automatic deployment.
+*   **`app/`**: Contains all modules for the Gradio application.
+    *   `database.py`: Manages the connection and helper functions for the MongoDB database.
+    *   `image_utils.py`: Contains the logic for adding the text overlay/watermark to result images.
+    *   `prediction.py`: The core prediction pipeline, including the dual-model sanity check.
+    *   `Roboto-Bold.ttf`: The font file bundled with the app to ensure consistent text rendering.
+*   **`src/vitClassifier/`**: The source code for the machine learning training pipeline, designed to be run with DVC and MLflow.
+*   **`artifacts/`**: (Local Only, Ignored by Git) The default directory where trained models and other large outputs from the DVC pipeline are saved.
+*   **`app.py`**: The main entrypoint to launch the Gradio web application.
+*   **`dvc.yaml`**: The DVC pipeline definition file, which orchestrates the training stages.
+*   **`requirements.txt`**: A list of all Python dependencies required for both training and the final application.
+*   **`.env`**: (Local Only, Ignored by Git) Stores secret keys like database connection strings and API tokens.
+*   **`.gitignore`**: Specifies which files and directories Git should ignore.
+*   **`README.md`**: This project documentation file.
 
 ## 6. How to Run this Project Locally
 
@@ -133,7 +131,7 @@ This method ensures that the final prediction is a consensus of all available ev
 
 ## 7. Project Team
 
-*   **Alyyan Ahmed:** Lead ML Engineer & Full-Stack Developer
-*   **Munim Akbar:** Project Contributor & Code Reviewer
+*   **Alyyan Ahmed:** ML Engineer & Full-Stack Developer
+*   **Munim Akbar:** ML Engineer & Full-Stack Developer
 
 ---
